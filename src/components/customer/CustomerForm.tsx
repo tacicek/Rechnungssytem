@@ -28,7 +28,10 @@ const customerSchema = z.object({
   contactGender: z.enum(['male', 'female', 'neutral']).optional(),
   email: z.string().email('Gültige E-Mail-Adresse erforderlich'),
   phone: z.string().optional(),
-  address: z.string().optional(),
+  street: z.string().optional(),
+  houseNumber: z.string().optional(),
+  postalCode: z.string().optional(),
+  city: z.string().optional(),
   taxNumber: z.string().optional(),
 });
 
@@ -59,7 +62,10 @@ export const CustomerForm: React.FC<CustomerFormProps> = ({
       contactGender: customer?.contactGender || undefined,
       email: customer?.email || '',
       phone: customer?.phone || '',
-      address: customer?.address || '',
+      street: customer?.street || '',
+      houseNumber: customer?.houseNumber || '',
+      postalCode: customer?.postalCode || '',
+      city: customer?.city || '',
       taxNumber: customer?.taxNumber || '',
     },
   });
@@ -72,7 +78,10 @@ export const CustomerForm: React.FC<CustomerFormProps> = ({
         contactGender: customer.contactGender || undefined,
         email: customer.email,
         phone: customer.phone || '',
-        address: customer.address || '',
+        street: customer.street || '',
+        houseNumber: customer.houseNumber || '',
+        postalCode: customer.postalCode || '',
+        city: customer.city || '',
         taxNumber: customer.taxNumber || '',
       });
     } else {
@@ -82,7 +91,10 @@ export const CustomerForm: React.FC<CustomerFormProps> = ({
         contactGender: undefined,
         email: '',
         phone: '',
-        address: '',
+        street: '',
+        houseNumber: '',
+        postalCode: '',
+        city: '',
         taxNumber: '',
       });
     }
@@ -180,23 +192,69 @@ export const CustomerForm: React.FC<CustomerFormProps> = ({
           )}
         />
 
-        <FormField
-          control={form.control}
-          name="address"
-          render={({ field }) => (
-            <FormItem>
-              <FormLabel>Adresse</FormLabel>
-              <FormControl>
-                <Textarea 
-                  {...field} 
-                  placeholder="Strasse, PLZ Ort, Land" 
-                  rows={3}
-                />
-              </FormControl>
-              <FormMessage />
-            </FormItem>
-          )}
-        />
+        <div className="space-y-4">
+          <h3 className="text-sm font-medium">Adresse</h3>
+          <div className="grid grid-cols-3 gap-4">
+            <div className="col-span-2">
+              <FormField
+                control={form.control}
+                name="street"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Strasse</FormLabel>
+                    <FormControl>
+                      <Input {...field} placeholder="Bahnhofstrasse" />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            </div>
+            <div className="col-span-1">
+              <FormField
+                control={form.control}
+                name="houseNumber"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Nummer</FormLabel>
+                    <FormControl>
+                      <Input {...field} placeholder="123" />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-4">
+            <FormField
+              control={form.control}
+              name="postalCode"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>PLZ</FormLabel>
+                  <FormControl>
+                    <Input {...field} placeholder="8000" />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            <FormField
+              control={form.control}
+              name="city"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Ort</FormLabel>
+                  <FormControl>
+                    <Input {...field} placeholder="Zürich" />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+          </div>
+        </div>
 
         <FormField
           control={form.control}

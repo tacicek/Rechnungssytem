@@ -218,12 +218,34 @@ async function getCompanySettings() {
     if (!user) {
       throw new Error('User not authenticated');
     }
+    
+    console.log('🔍 Swiss QR - User found:', user.id);
 
+    // Get user's vendor ID first
+    const { data: profile } = await supabase
+      .from('user_profiles')
+      .select('vendor_id')
+      .eq('user_id', user.id)
+      .single();
+    
+    console.log('🔍 Swiss QR - Profile:', profile);
+
+    if (!profile?.vendor_id) {
+      throw new Error('No vendor found for current user');
+    }
+
+    // Get company settings using vendor_id
     const { data, error } = await supabase
       .from('company_settings')
       .select('*')
-      .eq('user_id', user.id)
+      .eq('vendor_id', profile.vendor_id)
       .single();
+
+    console.log('🔍 Swiss QR - Company Settings Query Result:', {
+      data: data,
+      error: error,
+      vendor_id: profile.vendor_id
+    });
 
     if (error) {
       console.error('Error fetching company settings:', error);
@@ -234,7 +256,7 @@ async function getCompanySettings() {
       throw new Error('No company settings found');
     }
 
-    return {
+    const settings = {
       name: data.name || '',
       address: data.address || '',
       phone: data.phone || '',
@@ -251,6 +273,15 @@ async function getCompanySettings() {
       emailSubjectTemplate: data.email_subject_template || '',
       emailBodyTemplate: data.email_body_template || ''
     };
+    
+    console.log('🔍 Swiss QR - Final Settings:', {
+      name: settings.name,
+      address: settings.address,
+      addressLength: settings.address?.length || 0,
+      hasAddress: !!settings.address
+    });
+    
+    return settings;
   } catch (error) {
     console.error('Error getting company settings:', error);
     throw error;

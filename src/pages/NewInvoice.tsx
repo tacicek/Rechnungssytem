@@ -139,12 +139,15 @@ export default function NewInvoice() {
   };
 
   const handleSave = async () => {
-    console.log('Starting handleSave...');
-    console.log('Selected customer:', selectedCustomer);
-    console.log('Items:', items);
+    console.log('🚀 Starting handleSave...');
+    console.log('📋 Selected customer:', selectedCustomer);
+    console.log('📋 Items:', items);
+    console.log('📋 Invoice number:', invoiceNumber);
+    console.log('📋 Invoice date:', invoiceDate);
+    console.log('📋 Due date:', dueDate);
     
     if (!selectedCustomer) {
-      console.log('No customer selected');
+      console.log('⚠️ No customer selected');
       toast({
         title: "Fehler",
         description: "Bitte wählen Sie einen Kunden aus.",
@@ -154,7 +157,7 @@ export default function NewInvoice() {
     }
 
     if (items.some(item => !item.description || item.quantity <= 0 || item.price <= 0)) {
-      console.log('Invalid items found');
+      console.log('⚠️ Invalid items found:', items.filter(item => !item.description || item.quantity <= 0 || item.price <= 0));
       toast({
         title: "Fehler", 
         description: "Bitte füllen Sie alle Positionen vollständig aus.",
@@ -167,9 +170,23 @@ export default function NewInvoice() {
     const taxTotal = calculateTax(subtotal);
     const total = subtotal + taxTotal;
 
+    // Generate unique IDs with fallback for older browsers
+    const generateId = () => {
+      if (typeof crypto !== 'undefined' && crypto.randomUUID) {
+        return crypto.randomUUID();
+      } else {
+        // Fallback: Generate UUID v4 format for older browsers
+        return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+          const r = Math.random() * 16 | 0;
+          const v = c === 'x' ? r : (r & 0x3 | 0x8);
+          return v.toString(16);
+        });
+      }
+    };
+
     // Convert items to invoice items
     const invoiceItems: InvoiceItem[] = items.map(item => ({
-      id: crypto.randomUUID(),
+      id: generateId(),
       description: item.description,
       quantity: item.quantity,
       unitPrice: item.price,
@@ -178,7 +195,7 @@ export default function NewInvoice() {
     }));
 
     const invoice: Invoice = {
-      id: crypto.randomUUID(),
+      id: generateId(),
       number: invoiceNumber,
       invoiceNumber: invoiceNumber,
       customerName: selectedCustomer.name,
@@ -195,29 +212,44 @@ export default function NewInvoice() {
       updatedAt: new Date().toISOString()
     };
 
-    console.log('About to save invoice:', invoice);
+    console.log('📋 About to save invoice:', invoice);
     
     try {
-      console.log('Using simple invoice storage');
+      console.log('🚀 Using simple invoice storage');
       
       await simpleInvoiceStorage.add(invoice);
       
-      console.log('Invoice saved to Supabase successfully');
+      console.log('✅ Invoice saved to Supabase successfully');
       
       toast({
         title: "Rechnung erstellt",
         description: "Die Rechnung wurde erfolgreich erstellt.",
       });
-      console.log('Navigating to invoices...');
+      console.log('🚀 Navigating to invoices...');
       navigate("/dashboard/invoices");
     } catch (error) {
-      console.error('Invoice creation error details:', error);
-      console.error('Error type:', typeof error);
-      console.error('Error message:', error?.message);
-      console.error('Error stack:', error?.stack);
+      console.error('🔴 Invoice creation error details:', error);
+      console.error('🔴 Error type:', typeof error);
+      console.error('🔴 Error message:', error?.message);
+      console.error('🔴 Error stack:', error?.stack);
+      
+      // More detailed error message for user
+      let errorMessage = 'Unbekannter Fehler beim Erstellen der Rechnung.';
+      if (error?.message) {
+        if (error.message.includes('Authentication')) {
+          errorMessage = 'Authentifizierungsfehler. Bitte melden Sie sich erneut an.';
+        } else if (error.message.includes('vendor')) {
+          errorMessage = 'Kein gültiges Unternehmen gefunden. Bitte prüfen Sie Ihre Einstellungen.';
+        } else if (error.message.includes('invoice_no')) {
+          errorMessage = 'Fehler bei der Rechnungsnummer. Bitte versuchen Sie es erneut.';
+        } else {
+          errorMessage = `Fehler: ${error.message}`;
+        }
+      }
+      
       toast({
         title: "Fehler",
-        description: `Rechnung konnte nicht erstellt werden: ${error?.message || error}`,
+        description: errorMessage,
         variant: "destructive"
       });
     }
@@ -422,7 +454,7 @@ export default function NewInvoice() {
                             {/* Price and Tax Information */}
                             <div className="flex items-center justify-between pt-2">
                               <div className="flex items-center gap-3">
-                                <span className="text-lg font-bold text-green-600">
+                                <span className="text-lg font-bold text-blue-600">
                                   CHF {product.price.toFixed(2)}
                                 </span>
                                 <span className="text-sm text-gray-500">
@@ -433,7 +465,7 @@ export default function NewInvoice() {
                               {/* Active Status */}
                               <div>
                                 {product.isActive !== false ? (
-                                  <span className="inline-block bg-green-100 text-green-800 text-xs font-medium px-2 py-1 rounded-full">
+                                  <span className="inline-block bg-blue-100 text-blue-800 text-xs font-medium px-2 py-1 rounded-full">
                                     Verfügbar
                                   </span>
                                 ) : (
@@ -478,38 +510,38 @@ export default function NewInvoice() {
                   />
                 </div>
                 <div className="grid grid-cols-3 gap-2 md:contents">
-                <div className="md:col-span-2">
-                  <Label htmlFor={`quantity-${index}`}>Menge</Label>
-                  <Input
-                    id={`quantity-${index}`}
-                    type="number"
-                    min="1"
-                    value={item.quantity}
-                    onChange={(e) => updateItem(item.id, 'quantity', parseInt(e.target.value) || 1)}
-                  />
-                </div>
-                <div className="md:col-span-3">
-                  <Label htmlFor={`price-${index}`}>Preis (CHF)</Label>
-                  <Input
-                    id={`price-${index}`}
-                    type="number"
-                    step="0.01"
-                    min="0"
-                    value={item.price}
-                    onChange={(e) => updateItem(item.id, 'price', parseFloat(e.target.value) || 0)}
-                  />
-                </div>
-                <div className="md:col-span-1 flex justify-center">
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="h-8 w-8 p-0"
-                    onClick={() => removeItem(item.id)}
-                    disabled={items.length === 1}
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </Button>
-                </div>
+                  <div className="md:col-span-2">
+                    <Label htmlFor={`quantity-${index}`}>Menge</Label>
+                    <Input
+                      id={`quantity-${index}`}
+                      type="number"
+                      min="1"
+                      value={item.quantity}
+                      onChange={(e) => updateItem(item.id, 'quantity', parseInt(e.target.value) || 1)}
+                    />
+                  </div>
+                  <div className="md:col-span-3">
+                    <Label htmlFor={`price-${index}`}>Preis (CHF)</Label>
+                    <Input
+                      id={`price-${index}`}
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      value={item.price}
+                      onChange={(e) => updateItem(item.id, 'price', parseFloat(e.target.value) || 0)}
+                    />
+                  </div>
+                  <div className="md:col-span-1 flex justify-center">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-8 w-8 p-0"
+                      onClick={() => removeItem(item.id)}
+                      disabled={items.length === 1}
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </div>
                 </div>
               </div>
             ))}

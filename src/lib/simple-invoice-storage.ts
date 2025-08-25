@@ -3,23 +3,40 @@ import { Invoice } from '@/types';
 
 export const simpleInvoiceStorage = {
   add: async (invoice: Invoice): Promise<void> => {
-    // Get user
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) throw new Error('Not authenticated');
-
-    // Get vendor ID  
-    const { data: profile } = await supabase
-      .from('user_profiles')
-      .select('vendor_id')
-      .eq('user_id', user.id)
-      .single();
+    console.log('🟢 Simple invoice storage: Starting invoice creation', invoice.number);
     
-    if (!profile?.vendor_id) throw new Error('No vendor found');
+    try {
+      // Get user
+      const { data: { user }, error: userError } = await supabase.auth.getUser();
+      if (userError) {
+        console.error('🔴 Authentication error:', userError);
+        throw new Error(`Authentication failed: ${userError.message}`);
+      }
+      if (!user) {
+        console.error('🔴 No user found');
+        throw new Error('Not authenticated');
+      }
+      console.log('🟢 User authenticated:', user.id);
 
-    // Insert invoice - super simple
-    const { data: newInvoice, error } = await supabase
-      .from('invoices')
-      .insert({
+      // Get vendor ID  
+      const { data: profile, error: profileError } = await supabase
+        .from('user_profiles')
+        .select('vendor_id')
+        .eq('user_id', user.id)
+        .single();
+      
+      if (profileError) {
+        console.error('🔴 Profile error:', profileError);
+        throw new Error(`Failed to get user profile: ${profileError.message}`);
+      }
+      if (!profile?.vendor_id) {
+        console.error('🔴 No vendor found for user:', user.id);
+        throw new Error('No vendor found for current user');
+      }
+      console.log('🟢 Vendor ID found:', profile.vendor_id);
+
+      // Prepare invoice data
+      const invoiceData = {
         invoice_no: invoice.number,
         customer_name: invoice.customerName,
         customer_email: invoice.customerEmail,
@@ -33,35 +50,54 @@ export const simpleInvoiceStorage = {
         status: invoice.status,
         notes: invoice.notes || '',
         currency: 'CHF'
-      })
-      .select('id')
-      .single();
+      };
+      console.log('🟢 Invoice data prepared:', invoiceData);
 
-    if (error) {
-      console.error('Simple invoice insert error:', error);
-      throw new Error('Invoice could not be created');
-    }
+      // Insert invoice
+      const { data: newInvoice, error } = await supabase
+        .from('invoices')
+        .insert(invoiceData)
+        .select('id')
+        .single();
 
-    // Insert items - also super simple
-    if (invoice.items?.length > 0) {
-      const { error: itemsError } = await supabase
-        .from('invoice_items')
-        .insert(
-          invoice.items.map(item => ({
-            invoice_id: newInvoice.id,
-            created_by: user.id,
-            description: item.description,
-            qty: item.quantity,
-            unit_price: item.unitPrice,
-            tax_rate: item.taxRate || 0,
-            line_total: item.total
-          }))
-        );
-
-      if (itemsError) {
-        console.error('Simple items insert error:', itemsError);
-        throw new Error('Invoice items could not be created');
+      if (error) {
+        console.error('🔴 Simple invoice insert error:', error);
+        throw new Error(`Invoice could not be created: ${error.message}`);
       }
+      console.log('🟢 Invoice created with ID:', newInvoice.id);
+
+      // Insert items
+      if (invoice.items?.length > 0) {
+        console.log('🟢 Adding', invoice.items.length, 'items...');
+        
+        const itemsData = invoice.items.map(item => ({
+          invoice_id: newInvoice.id,
+          created_by: user.id,
+          description: item.description,
+          qty: item.quantity,
+          unit_price: item.unitPrice,
+          tax_rate: item.taxRate || 0,
+          line_total: item.total
+        }));
+        console.log('🟢 Items data prepared:', itemsData);
+
+        const { error: itemsError } = await supabase
+          .from('invoice_items')
+          .insert(itemsData);
+
+        if (itemsError) {
+          console.error('🔴 Simple items insert error:', itemsError);
+          throw new Error(`Invoice items could not be created: ${itemsError.message}`);
+        }
+        console.log('🟢 All items created successfully');
+      } else {
+        console.log('🟡 No items to add');
+      }
+      
+      console.log('🟢 Invoice creation completed successfully!');
+    } catch (error) {
+      console.error('🔴 Simple invoice storage error:', error);
+      throw error; // Re-throw to let the calling function handle it
     }
   }
 };

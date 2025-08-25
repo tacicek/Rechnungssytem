@@ -19,17 +19,54 @@ class CustomerStorageService {
       console.log('CustomerStorage: Loaded customers:', data?.length || 0, 'customers');
       console.log('CustomerStorage: Raw data:', data);
 
-      return data?.map(c => ({
-        id: c.id,
-        name: c.name,
-        contactPerson: c.contact_person,
-        contactGender: c.contact_gender as 'male' | 'female' | 'neutral' | undefined,
-        email: c.email,
-        phone: c.phone,
-        address: c.address,
-        taxNumber: c.tax_number,
-        createdAt: c.created_at
-      })) || [];
+      return data?.map(c => {
+        // Parse address back to separate fields if they exist
+        let street = '', houseNumber = '', postalCode = '', city = '';
+        if (c.address) {
+          const lines = c.address.split('\n');
+          if (lines.length >= 2) {
+            // Parse "Bahnhofstrasse 123" format
+            const streetLine = lines[0];
+            const parts = streetLine.split(' ');
+            if (parts.length > 1) {
+              houseNumber = parts[parts.length - 1];
+              street = parts.slice(0, -1).join(' ');
+            } else {
+              street = streetLine;
+            }
+            
+            // Parse "8000 Zürich" format
+            const cityLine = lines[1];
+            const cityParts = cityLine.split(' ');
+            if (cityParts.length > 1) {
+              postalCode = cityParts[0];
+              city = cityParts.slice(1).join(' ');
+            } else {
+              city = cityLine;
+            }
+          } else {
+            // Single line address, try to parse it
+            const parts = c.address.split(' ');
+            street = parts.join(' ');
+          }
+        }
+        
+        return {
+          id: c.id,
+          name: c.name,
+          contactPerson: c.contact_person,
+          contactGender: c.contact_gender as 'male' | 'female' | 'neutral' | undefined,
+          email: c.email,
+          phone: c.phone,
+          address: c.address,
+          street,
+          houseNumber,
+          postalCode,
+          city,
+          taxNumber: c.tax_number,
+          createdAt: c.created_at
+        };
+      }) || [];
     } catch (error) {
       console.error('Error in customerStorage.getAll:', error);
       return [];
@@ -50,6 +87,14 @@ class CustomerStorageService {
 
       if (!profile?.vendor_id) throw new Error('User vendor not found');
 
+      // Combine separate address fields into a single address string
+      let combinedAddress = customer.address || '';
+      if (customer.street || customer.houseNumber || customer.postalCode || customer.city) {
+        const streetLine = [customer.street, customer.houseNumber].filter(Boolean).join(' ');
+        const cityLine = [customer.postalCode, customer.city].filter(Boolean).join(' ');
+        combinedAddress = [streetLine, cityLine].filter(Boolean).join('\n');
+      }
+
       const { data, error } = await supabase
         .from('customers')
         .insert({
@@ -58,7 +103,7 @@ class CustomerStorageService {
           contact_gender: customer.contactGender,
           email: customer.email,
           phone: customer.phone,
-          address: customer.address,
+          address: combinedAddress,
           tax_number: customer.taxNumber,
           vendor_id: profile.vendor_id,
           created_by: user.id
@@ -68,6 +113,31 @@ class CustomerStorageService {
 
       if (error) throw error;
 
+      // Parse address back to separate fields
+      let street = '', houseNumber = '', postalCode = '', city = '';
+      if (data.address) {
+        const lines = data.address.split('\n');
+        if (lines.length >= 2) {
+          const streetLine = lines[0];
+          const parts = streetLine.split(' ');
+          if (parts.length > 1) {
+            houseNumber = parts[parts.length - 1];
+            street = parts.slice(0, -1).join(' ');
+          } else {
+            street = streetLine;
+          }
+          
+          const cityLine = lines[1];
+          const cityParts = cityLine.split(' ');
+          if (cityParts.length > 1) {
+            postalCode = cityParts[0];
+            city = cityParts.slice(1).join(' ');
+          } else {
+            city = cityLine;
+          }
+        }
+      }
+
       return {
         id: data.id,
         name: data.name,
@@ -76,6 +146,10 @@ class CustomerStorageService {
         email: data.email,
         phone: data.phone,
         address: data.address,
+        street,
+        houseNumber,
+        postalCode,
+        city,
         taxNumber: data.tax_number,
         createdAt: data.created_at
       };
@@ -87,6 +161,14 @@ class CustomerStorageService {
 
   async update(id: string, updates: Partial<Customer>): Promise<Customer> {
     try {
+      // Combine separate address fields into a single address string
+      let combinedAddress = updates.address || '';
+      if (updates.street || updates.houseNumber || updates.postalCode || updates.city) {
+        const streetLine = [updates.street, updates.houseNumber].filter(Boolean).join(' ');
+        const cityLine = [updates.postalCode, updates.city].filter(Boolean).join(' ');
+        combinedAddress = [streetLine, cityLine].filter(Boolean).join('\n');
+      }
+
       const { data, error } = await supabase
         .from('customers')
         .update({
@@ -95,7 +177,7 @@ class CustomerStorageService {
           contact_gender: updates.contactGender,
           email: updates.email,
           phone: updates.phone,
-          address: updates.address,
+          address: combinedAddress,
           tax_number: updates.taxNumber
         })
         .eq('id', id)
@@ -103,6 +185,31 @@ class CustomerStorageService {
         .single();
 
       if (error) throw error;
+
+      // Parse address back to separate fields
+      let street = '', houseNumber = '', postalCode = '', city = '';
+      if (data.address) {
+        const lines = data.address.split('\n');
+        if (lines.length >= 2) {
+          const streetLine = lines[0];
+          const parts = streetLine.split(' ');
+          if (parts.length > 1) {
+            houseNumber = parts[parts.length - 1];
+            street = parts.slice(0, -1).join(' ');
+          } else {
+            street = streetLine;
+          }
+          
+          const cityLine = lines[1];
+          const cityParts = cityLine.split(' ');
+          if (cityParts.length > 1) {
+            postalCode = cityParts[0];
+            city = cityParts.slice(1).join(' ');
+          } else {
+            city = cityLine;
+          }
+        }
+      }
 
       return {
         id: data.id,
@@ -112,6 +219,10 @@ class CustomerStorageService {
         email: data.email,
         phone: data.phone,
         address: data.address,
+        street,
+        houseNumber,
+        postalCode,
+        city,
         taxNumber: data.tax_number,
         createdAt: data.created_at
       };
@@ -171,6 +282,31 @@ class CustomerStorageService {
 
       if (error) throw error;
 
+      // Parse address back to separate fields
+      let street = '', houseNumber = '', postalCode = '', city = '';
+      if (data.address) {
+        const lines = data.address.split('\n');
+        if (lines.length >= 2) {
+          const streetLine = lines[0];
+          const parts = streetLine.split(' ');
+          if (parts.length > 1) {
+            houseNumber = parts[parts.length - 1];
+            street = parts.slice(0, -1).join(' ');
+          } else {
+            street = streetLine;
+          }
+          
+          const cityLine = lines[1];
+          const cityParts = cityLine.split(' ');
+          if (cityParts.length > 1) {
+            postalCode = cityParts[0];
+            city = cityParts.slice(1).join(' ');
+          } else {
+            city = cityLine;
+          }
+        }
+      }
+
       return {
         id: data.id,
         name: data.name,
@@ -179,6 +315,10 @@ class CustomerStorageService {
         email: data.email,
         phone: data.phone,
         address: data.address,
+        street,
+        houseNumber,
+        postalCode,
+        city,
         taxNumber: data.tax_number,
         createdAt: data.created_at
       };

@@ -15,13 +15,48 @@ export function SwissQRBill({ invoice }: SwissQRBillProps) {
   const [qrCodeDataURL, setQrCodeDataURL] = useState<string>('');
   const [loading, setLoading] = useState(true);
   const [qrData, setQrData] = useState<any>(null);
+  const [customerAddress, setCustomerAddress] = useState<string>('');
 
   useEffect(() => {
     console.log('🟢 SwissQRBill component mounted');
     console.log('🟢 Invoice prop:', invoice);
+    
     const loadQRData = async () => {
       try {
         setLoading(true);
+        
+        // Fetch customer address
+        if (invoice.customerName) {
+          try {
+            const { data: { user } } = await supabase.auth.getUser();
+            if (user) {
+              const { data: profile } = await supabase
+                .from('user_profiles')
+                .select('vendor_id')
+                .eq('user_id', user.id)
+                .single();
+
+              if (profile?.vendor_id) {
+                const { data: customer } = await supabase
+                  .from('customers')
+                  .select('address')
+                  .eq('vendor_id', profile.vendor_id)
+                  .eq('name', invoice.customerName)
+                  .single();
+
+                if (customer && customer.address) {
+                  setCustomerAddress(customer.address);
+                  console.log('🟢 Customer address found:', customer.address);
+                } else {
+                  console.log('🟡 No customer address found for:', invoice.customerName);
+                }
+              }
+            }
+          } catch (error) {
+            console.error('🔴 Error fetching customer address:', error);
+          }
+        }
+        
         console.log('🟢 About to call generateSwissQRData');
         const data = await generateSwissQRData(invoice);
         console.log('🟢 QR data received:', data);
@@ -77,7 +112,13 @@ export function SwissQRBill({ invoice }: SwissQRBillProps) {
                 <h4 className="text-xs font-bold mb-1 md:mb-2 text-gray-900">Zahlbar durch</h4>
                 <div className="text-xs text-gray-900 leading-tight">
                   <div className="font-semibold">{invoice.customerName}</div>
-                  <div>Adresse nicht verfügbar</div>
+                  {customerAddress ? (
+                    customerAddress.split('\n').map((line, index) => (
+                      <div key={index}>{line}</div>
+                    ))
+                  ) : (
+                    <div className="text-gray-500 italic">Adresse nicht verfügbar</div>
+                  )}
                 </div>
               </div>
             )}
@@ -167,7 +208,13 @@ export function SwissQRBill({ invoice }: SwissQRBillProps) {
                     <h4 className="text-xs md:text-sm font-bold mb-1 md:mb-2 text-gray-900">Zahlbar durch</h4>
                     <div className="text-xs md:text-sm text-gray-900 leading-relaxed">
                       <div className="font-semibold">{invoice.customerName}</div>
-                      <div>Adresse nicht verfügbar</div>
+                      {customerAddress ? (
+                        customerAddress.split('\n').map((line, index) => (
+                          <div key={index}>{line}</div>
+                        ))
+                      ) : (
+                        <div className="text-gray-500 italic">Adresse nicht verfügbar</div>
+                      )}
                     </div>
                   </div>
                 )}

@@ -25,7 +25,7 @@ import EditInvoice from "./pages/EditInvoice";
 import InvoicePreview from "./pages/InvoicePreview";
 import Products from "./pages/Products";
 import Offers from "./pages/Offers";
-import NewOffer from "./pages/NewOffer";
+import NewOfferSimple from "./pages/NewOfferSimple";
 import EditOffer from "./pages/EditOffer";
 import Reports from "./pages/Reports";
 import Settings from "./pages/Settings";
@@ -59,7 +59,7 @@ function BusinessApp() {
         <Route path="/invoices/:id/edit" element={<EditInvoice />} />
         <Route path="/invoices/:id" element={<InvoicePreview />} />
         <Route path="/offers" element={<Offers />} />
-        <Route path="/offers/new" element={<NewOffer />} />
+        <Route path="/offers/new" element={<NewOfferSimple />} />
         <Route path="/offers/:id/edit" element={<EditOffer />} />
         <Route path="/products" element={<Products />} />
         <Route path="/reports" element={<Reports />} />

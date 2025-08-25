@@ -77,11 +77,29 @@ export const CustomerTable: React.FC<CustomerTableProps> = ({
                   <span>{customer.phone}</span>
                 </div>
               )}
-              {customer.address && (
+              {(customer.street || customer.houseNumber || customer.postalCode || customer.city) ? (
                 <div>
                   <span className="text-muted-foreground">Adresse: </span>
-                  <span className="break-words">{customer.address}</span>
+                  <div className="break-words">
+                    {customer.street && customer.houseNumber ? (
+                      <div>{customer.street} {customer.houseNumber}</div>
+                    ) : (
+                      customer.street && <div>{customer.street}</div>
+                    )}
+                    {customer.postalCode && customer.city ? (
+                      <div>{customer.postalCode} {customer.city}</div>
+                    ) : (
+                      (customer.postalCode || customer.city) && <div>{customer.postalCode} {customer.city}</div>
+                    )}
+                  </div>
                 </div>
+              ) : (
+                customer.address && (
+                  <div>
+                    <span className="text-muted-foreground">Adresse: </span>
+                    <span className="break-words">{customer.address}</span>
+                  </div>
+                )
               )}
               <div>
                 <span className="text-muted-foreground">Erstellt: </span>

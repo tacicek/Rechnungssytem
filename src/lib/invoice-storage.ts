@@ -68,7 +68,7 @@ export const invoiceStorage = {
     const vendorId = await getCurrentVendorId();
     console.log('Using vendor ID:', vendorId);
 
-    // Prepare invoice data
+    // Prepare invoice data (let database auto-generate ID)
     const invoiceData = {
       invoice_no: invoice.number,
       customer_name: invoice.customerName,

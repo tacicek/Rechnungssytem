@@ -3,9 +3,9 @@ import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Plus, Eye, Download, Edit, CheckCircle, Settings, Mail, Trash2, Send } from "lucide-react";
+import { Plus, Eye, Download, Edit, CheckCircle, Settings, Mail, Trash2, Send, Copy } from "lucide-react";
 import { Invoice } from "@/types";
-import { invoiceStorage } from "@/lib/invoice-storage";
+import { invoiceStorage, invoiceNumberGenerator } from "@/lib/invoice-storage";
 import { generateInvoicePDF } from "@/lib/pdfGenerator";
 import { EmailService } from "@/lib/emailService";
 import { supabase } from "@/integrations/supabase/client";
@@ -202,6 +202,68 @@ export default function Invoices() {
     }
   };
 
+  const handleDuplicateInvoice = async (invoice: Invoice) => {
+    try {
+      toast.loading('Rechnung wird dupliziert...', { id: `duplicate-${invoice.id}` });
+      
+      // Generate new invoice number
+      const newInvoiceNumber = await invoiceNumberGenerator.getNext();
+      
+      // Create new invoice with today's date and new due date (30 days from today)
+      const today = new Date();
+      const dueDate = new Date();
+      dueDate.setDate(today.getDate() + 30);
+      
+      // Generate unique IDs with fallback for older browsers
+      const generateId = () => {
+        if (typeof crypto !== 'undefined' && crypto.randomUUID) {
+          return crypto.randomUUID();
+        } else {
+          // Fallback: Generate UUID v4 format for older browsers
+          return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+            const r = Math.random() * 16 | 0;
+            const v = c === 'x' ? r : (r & 0x3 | 0x8);
+            return v.toString(16);
+          });
+        }
+      };
+      
+      // Create duplicate invoice with new ID and invoice number
+      const duplicatedInvoice: Invoice = {
+        ...invoice,
+        id: generateId(),
+        number: newInvoiceNumber,
+        invoiceNumber: newInvoiceNumber,
+        date: today.toISOString(),
+        dueDate: dueDate.toISOString(),
+        status: 'draft', // Always start as draft
+        notes: `Dupliziert von Rechnung ${invoice.number} am ${today.toLocaleDateString('de-DE')}${invoice.notes ? '\n\n' + invoice.notes : ''}`,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        items: invoice.items.map(item => ({
+          ...item,
+          id: generateId() // Generate new IDs for items too
+        }))
+      };
+      
+      console.log('Duplicating invoice:', {
+        original: invoice.number,
+        new: newInvoiceNumber,
+        items: duplicatedInvoice.items.length
+      });
+      
+      // Add the duplicated invoice
+      await invoiceStorage.add(duplicatedInvoice);
+      await loadInvoices(); // Reload to get updated data
+      
+      toast.success(`Duplikat erstellt: ${invoice.number} → ${newInvoiceNumber} (als Entwurf)`, { id: `duplicate-${invoice.id}` });
+    } catch (error) {
+      console.error('Error duplicating invoice:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Unbekannter Fehler';
+      toast.error(`Fehler beim Duplizieren der Rechnung: ${errorMessage}`, { id: `duplicate-${invoice.id}` });
+    }
+  };
+
   // Get current filter status for display
   const currentFilter = searchParams.get('status');
   const getFilterTitle = () => {
@@ -279,6 +341,7 @@ export default function Invoices() {
         <div className="space-y-4">
           {filteredInvoices.map((invoice) => {
             const overdueStatus = isOverdue(invoice);
+            const isDuplicate = invoice.notes?.includes('Dupliziert von Rechnung') && invoice.status === 'draft';
             return (
             <Card 
               key={invoice.id} 
@@ -297,6 +360,12 @@ export default function Invoices() {
                         <Badge variant={statusColors[invoice.status]} className="flex-shrink-0">
                           {statusLabels[invoice.status]}
                         </Badge>
+                        {isDuplicate && (
+                          <Badge variant="outline" className="flex-shrink-0 text-blue-600 border-blue-300 bg-blue-50">
+                            <Copy className="w-3 h-3 mr-1" />
+                            Duplikat
+                          </Badge>
+                        )}
                         {overdueStatus && (
                           <Badge variant="destructive" className="flex-shrink-0 animate-pulse">
                             ÜBERFÄLLIG
@@ -314,6 +383,16 @@ export default function Invoices() {
                         Fällig: {format(new Date(invoice.dueDate), 'dd. MMM yyyy', { locale: de })}
                         {overdueStatus && ' (ÜBERFÄLLIG)'}
                       </span>
+                      {isDuplicate && invoice.status === 'draft' && (
+                        <>
+                          <span className="hidden sm:inline">•</span>
+                          <span className="text-blue-600 font-medium">
+                            {invoice.notes?.match(/Dupliziert von Rechnung ([^\s]+)/)?.[1] && 
+                              `Original: ${invoice.notes.match(/Dupliziert von Rechnung ([^\s]+)/)?.[1]}`
+                            }
+                          </span>
+                        </>
+                      )}
                     </div>
                   </div>
                   
@@ -379,6 +458,16 @@ export default function Invoices() {
                         title="Bearbeiten"
                       >
                         <Edit className="h-4 w-4" />
+                      </Button>
+                      
+                      <Button 
+                        variant="ghost" 
+                        size="sm" 
+                        className="h-8 w-8 p-0 text-blue-600 hover:text-blue-700 hover:bg-blue-50" 
+                        onClick={() => handleDuplicateInvoice(invoice)}
+                        title="Rechnung duplizieren"
+                      >
+                        <Copy className="h-4 w-4" />
                       </Button>
                       
                       {overdueStatus && (

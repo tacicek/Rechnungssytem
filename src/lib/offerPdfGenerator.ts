@@ -26,36 +26,98 @@ export const generateOfferPDF = ({ offer, customer, items, companyInfo }: Genera
   const pageWidth = doc.internal.pageSize.width;
   const pageHeight = doc.internal.pageSize.height;
   
-  let yPosition = 30;
+  // === MODERN SWISS DESIGN COLORS ===
+  const brandColor: [number, number, number] = [41, 128, 185];
+  const lightGray: [number, number, number] = [248, 249, 250];
+  const darkGray: [number, number, number] = [52, 58, 64];
+  const mediumGray: [number, number, number] = [108, 117, 125];
   
-  // Company information (top left)
+  const margin = 20;
+  const contentWidth = pageWidth - (margin * 2);
+  let yPosition = margin;
+  
+  // === HEADER SECTION ===
+  
+  // Company name with modern typography
   if (companyInfo) {
-    doc.setFontSize(14);
-    doc.setFont(undefined, 'bold');
-    doc.text(companyInfo.name, 20, yPosition);
-    
-    doc.setFontSize(10);
-    doc.setFont(undefined, 'normal');
-    yPosition += 10;
-    doc.text(companyInfo.address, 20, yPosition);
-    yPosition += 6;
-    doc.text(`Tel: ${companyInfo.phone}`, 20, yPosition);
-    yPosition += 6;
-    doc.text(`Email: ${companyInfo.email}`, 20, yPosition);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(18);
+    doc.setTextColor(...brandColor);
+    doc.text(companyInfo.name, margin, yPosition);
   }
   
-  // Title
-  yPosition = 30;
-  doc.setFontSize(20);
-  doc.setFont(undefined, 'bold');
-  doc.text('ANGEBOT', pageWidth - 20, yPosition, { align: 'right' });
+  // Offer title and number (right side)
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(24);
+  doc.setTextColor(...darkGray);
+  doc.text('ANGEBOT', pageWidth - margin, yPosition, { align: 'right' });
   
-  // Offer number and date
-  yPosition += 15;
-  doc.setFontSize(12);
-  doc.setFont(undefined, 'normal');
-  doc.text(`Angebot Nr.: ${offer.offer_no}`, pageWidth - 20, yPosition, { align: 'right' });
   yPosition += 8;
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(12);
+  doc.setTextColor(...mediumGray);
+  doc.text(`Nr. ${offer.offer_no}`, pageWidth - margin, yPosition, { align: 'right' });
+  
+  yPosition += 15;
+  
+  // === COMPANY DETAILS AND OFFER INFO ===
+  
+  // Left column - Company details
+  let leftY = yPosition;
+  if (companyInfo) {
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(10);
+    doc.setTextColor(...mediumGray);
+    
+    if (companyInfo.address) {
+      const addressLines = companyInfo.address.split('\n');
+      addressLines.forEach((line) => {
+        doc.text(line, margin, leftY);
+        leftY += 4;
+      });
+    }
+    
+    if (companyInfo.phone) {
+      leftY += 2;
+      doc.text(`Telefon: ${companyInfo.phone}`, margin, leftY);
+      leftY += 4;
+    }
+    
+    if (companyInfo.email) {
+      doc.text(`E-Mail: ${companyInfo.email}`, margin, leftY);
+      leftY += 4;
+    }
+  }
+  
+  // Right column - Offer details in styled box
+  const rightColumnWidth = contentWidth * 0.45;
+  const rightColumnX = pageWidth - margin - rightColumnWidth;
+  let rightY = yPosition;
+  
+  // Offer details box background
+  doc.setFillColor(...lightGray);
+  doc.roundedRect(rightColumnX - 5, rightY - 5, rightColumnWidth + 10, 30, 3, 3, 'F');
+  
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(10);
+  
+  // Offer details
+  const offerDetails = [
+    ['Angebotsdatum:', new Date(offer.issue_date).toLocaleDateString('de-CH')],
+    ['Gültig bis:', offer.valid_until ? new Date(offer.valid_until).toLocaleDateString('de-CH') : 'Unbegrenzt']
+  ];
+  
+  offerDetails.forEach(([label, value]) => {
+    doc.setTextColor(...mediumGray);
+    doc.text(label, rightColumnX, rightY);
+    doc.setFont('helvetica', 'bold');
+    doc.setTextColor(...darkGray);
+    doc.text(value, rightColumnX + 40, rightY);
+    doc.setFont('helvetica', 'normal');
+    rightY += 6;
+  });
+  
+  yPosition = Math.max(leftY, rightY) + 20;
   doc.text(`Datum: ${new Date(offer.issue_date).toLocaleDateString('de-DE')}`, pageWidth - 20, yPosition, { align: 'right' });
   
   if (offer.valid_until) {

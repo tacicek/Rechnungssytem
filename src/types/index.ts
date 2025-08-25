@@ -5,7 +5,11 @@ export interface Customer {
   contactGender?: 'male' | 'female' | 'neutral'; // Gender for proper greeting
   email: string;
   phone?: string;
-  address: string;
+  address?: string; // Deprecated: use separate fields below
+  street?: string;
+  houseNumber?: string;
+  postalCode?: string;
+  city?: string;
   taxNumber?: string;
   createdAt: string;
 }

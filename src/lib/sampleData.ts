@@ -9,6 +9,10 @@ export const sampleCustomers: Customer[] = [
     email: 'info@musterfirma.ch',
     phone: '+41 44 123 45 67',
     address: 'Bahnhofstrasse 123\n8001 Zürich',
+    street: 'Bahnhofstrasse',
+    houseNumber: '123',
+    postalCode: '8001',
+    city: 'Zürich',
     taxNumber: '1234567890',
     createdAt: new Date('2024-01-15').toISOString()
   },
@@ -18,6 +22,10 @@ export const sampleCustomers: Customer[] = [
     email: 'buchhaltung@abc-solutions.ch',
     phone: '+41 31 987 65 43',
     address: 'Bundesplatz 15\n3011 Bern',
+    street: 'Bundesplatz',
+    houseNumber: '15',
+    postalCode: '3011',
+    city: 'Bern',
     taxNumber: '9876543210',
     createdAt: new Date('2024-02-01').toISOString()
   },
@@ -27,6 +35,10 @@ export const sampleCustomers: Customer[] = [
     email: 'max.mueller@example.ch',
     phone: '+41 79 123 45 67',
     address: 'Seestrasse 42\n8002 Zürich',
+    street: 'Seestrasse',
+    houseNumber: '42',
+    postalCode: '8002',
+    city: 'Zürich',
     createdAt: new Date('2024-02-15').toISOString()
   }
 ];

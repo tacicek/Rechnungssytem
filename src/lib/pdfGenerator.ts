@@ -30,20 +30,30 @@ export async function generateInvoicePDF(invoice: Invoice): Promise<void> {
   try {
     // Get user's vendor ID first
     const { data: { user } } = await supabase.auth.getUser();
+    console.log('🔍 PDF Generator - User found:', user?.id);
+    
     if (user) {
       const { data: profile } = await supabase
         .from('user_profiles')
         .select('vendor_id')
         .eq('user_id', user.id)
         .single();
+      
+      console.log('🔍 PDF Generator - Profile data:', profile);
 
       if (profile?.vendor_id) {
         // Get company settings for this vendor
-        const { data: companySettings } = await supabase
+        const { data: companySettings, error: settingsError } = await supabase
           .from('company_settings')
           .select('*')
           .eq('vendor_id', profile.vendor_id)
           .single();
+        
+        console.log('🔍 PDF Generator - Company Settings Query Result:', {
+          data: companySettings,
+          error: settingsError,
+          vendor_id: profile.vendor_id
+        });
 
         if (companySettings) {
           settings = {
@@ -61,115 +71,152 @@ export async function generateInvoicePDF(invoice: Invoice): Promise<void> {
             contactPerson: '',
             contactPosition: ''
           };
+          
+          console.log('🔍 PDF Generator - Final Settings:', {
+            name: settings.name,
+            address: settings.address,
+            addressLength: settings.address?.length || 0,
+            hasAddress: !!settings.address
+          });
+        } else {
+          console.warn('🟡 PDF Generator - No company settings found for vendor:', profile.vendor_id);
         }
+      } else {
+        console.warn('🟡 PDF Generator - No vendor_id found in profile');
       }
+    } else {
+      console.warn('🟡 PDF Generator - No user authenticated');
     }
   } catch (error) {
-    console.error('Error loading company settings from Supabase:', error);
+    console.error('🔴 Error loading company settings from Supabase:', error);
     // Will use default settings if database query fails
   }
   
   console.log('PDF Generator - Loaded settings:', settings);
   
+  // === MODERN SWISS INVOICE DESIGN ===
+  
+  // Define colors for the modern design (as tuples for TypeScript)
+  const brandColor: [number, number, number] = [41, 128, 185]; // Professional blue
+  const lightGray: [number, number, number] = [248, 249, 250];
+  const darkGray: [number, number, number] = [52, 58, 64];
+  const mediumGray: [number, number, number] = [108, 117, 125];
+  
   // Page dimensions
   const pageWidth = pdf.internal.pageSize.getWidth();
   const pageHeight = pdf.internal.pageSize.getHeight();
-  const margin = 5; // Reduced to 5mm for maximum content width
+  const margin = 20;
   const contentWidth = pageWidth - (margin * 2);
   
-  // Calculate content height and center vertically
-  const estimatedContentHeight = 200; // Estimate based on typical invoice content
-  const availableHeight = pageHeight - (margin * 2);
-  const verticalOffset = Math.max(0, (availableHeight - estimatedContentHeight) / 4); // Quarter offset for better visual balance
-  let yPosition = margin + verticalOffset;
+  let yPosition = margin;
   
-  // === CLEAN MINIMAL INVOICE DESIGN ===
+  // === HEADER SECTION ===
   
-  // Sol taraf - Şirket logo ve bilgileri (resimde görüldüğü gibi)
-  let leftYPosition = margin + verticalOffset;
-  
-  // Logo (üstte, solda)
+  // Company logo and name (left side)
   if (settings.logo) {
     try {
-      const logoSize = 15; // Logo boyutu
-      pdf.addImage(settings.logo, 'JPEG', margin, leftYPosition, logoSize * 1.5, logoSize);
-      leftYPosition += logoSize + 5;
+      pdf.addImage(settings.logo, 'JPEG', margin, yPosition, 30, 20);
+      yPosition += 25;
     } catch (error) {
       console.error('Error loading logo:', error);
     }
   }
   
-  // Şirket adı (büyük font)
-  pdf.setFontSize(12);
-  pdf.setTextColor(0, 0, 0);
-  pdf.text(settings.name || 'Ihr Unternehmen', margin, leftYPosition);
-  leftYPosition += 6;
+  // Company name with modern typography
+  pdf.setFont('helvetica', 'bold');
+  pdf.setFontSize(18);
+  pdf.setTextColor(...brandColor);
+  pdf.text(settings.name || 'Ihr Unternehmen', margin, yPosition);
   
-  // Şirket adresi
-  pdf.setFontSize(9);
-  pdf.setTextColor(0, 0, 0);
+  // Invoice title and number (right side)
+  pdf.setFont('helvetica', 'bold');
+  pdf.setFontSize(24);
+  pdf.setTextColor(...darkGray);
+  pdf.text('RECHNUNG', pageWidth - margin, yPosition, { align: 'right' });
+  
+  yPosition += 8;
+  pdf.setFont('helvetica', 'normal');
+  pdf.setFontSize(12);
+  pdf.setTextColor(...mediumGray);
+  pdf.text(`Nr. ${invoice.number}`, pageWidth - margin, yPosition, { align: 'right' });
+  
+  yPosition += 15;
+  
+  // === COMPANY DETAILS AND INVOICE INFO ===
+  
+  // Split into two columns
+  const leftColumnWidth = contentWidth * 0.45;
+  const rightColumnWidth = contentWidth * 0.45;
+  const columnGap = contentWidth * 0.1;
+  
+  // Left column - Company details
+  let leftY = yPosition;
+  pdf.setFont('helvetica', 'normal');
+  pdf.setFontSize(10);
+  pdf.setTextColor(...mediumGray);
+  
   if (settings.address) {
     const addressLines = settings.address.split('\n');
     addressLines.forEach((line) => {
-      pdf.text(line, margin, leftYPosition);
-      leftYPosition += 4;
+      pdf.text(line, margin, leftY);
+      leftY += 4;
     });
   }
   
-  // Telefon ve email (eğer varsa)
   if (settings.phone) {
-    leftYPosition += 2;
-    pdf.text(`Tel: ${settings.phone}`, margin, leftYPosition);
-    leftYPosition += 4;
+    leftY += 2;
+    pdf.text(`Telefon: ${settings.phone}`, margin, leftY);
+    leftY += 4;
   }
+  
   if (settings.email) {
-    pdf.text(`E-Mail: ${settings.email}`, margin, leftYPosition);
-    leftYPosition += 4;
+    pdf.text(`E-Mail: ${settings.email}`, margin, leftY);
+    leftY += 4;
   }
   
-  // Sağ taraf - Fatura bilgileri (resimde görüldüğü gibi)
-  const rightColumnX = pageWidth - margin - 80; // Daha geniş alan
-  let rightYPosition = margin + verticalOffset;
+  if (settings.taxNumber) {
+    leftY += 2;
+    pdf.text(`UID: ${settings.taxNumber}`, margin, leftY);
+    leftY += 4;
+  }
   
-  // Fatura başlığı
-  pdf.setFontSize(16);
-  pdf.setTextColor(0, 0, 0);
-  pdf.text('Rechnung ' + invoice.number, rightColumnX, rightYPosition);
-  rightYPosition += 10;
+  // Right column - Invoice details in a styled box
+  const rightColumnX = pageWidth - margin - rightColumnWidth;
+  let rightY = yPosition;
   
-  // Fatura detayları
-  pdf.setFontSize(9);
-  pdf.setTextColor(0, 0, 0);
+  // Invoice details box background
+  pdf.setFillColor(...lightGray);
+  pdf.roundedRect(rightColumnX - 5, rightY - 5, rightColumnWidth + 10, 35, 3, 3, 'F');
   
-  // Datum satırı
-  pdf.text('Datum:', rightColumnX, rightYPosition);
-  pdf.text(format(new Date(invoice.date), 'dd.MM.yyyy'), rightColumnX + 35, rightYPosition);
-  rightYPosition += 5;
+  pdf.setFont('helvetica', 'bold');
+  pdf.setFontSize(10);
+  pdf.setTextColor(...darkGray);
   
-  // Zahlbar bis satırı
-  pdf.text('Zahlbar bis:', rightColumnX, rightYPosition);
-  pdf.text(format(new Date(invoice.dueDate), 'dd.MM.yyyy'), rightColumnX + 35, rightYPosition);
-  rightYPosition += 5;
+  // Invoice details
+  const invoiceDetails = [
+    ['Rechnungsdatum:', format(new Date(invoice.date), 'dd.MM.yyyy', { locale: de })],
+    ['Fälligkeitsdatum:', format(new Date(invoice.dueDate), 'dd.MM.yyyy', { locale: de })],
+    ['Zahlungsziel:', `${Math.ceil((new Date(invoice.dueDate).getTime() - new Date(invoice.date).getTime()) / (1000 * 60 * 60 * 24))} Tage`]
+  ];
   
-  // Ansprechpartner
-  pdf.text('Ihr Ansprechpartner:', rightColumnX, rightYPosition);
-  const contactName = settings.contactPerson || settings.name || 'Kundenservice';
-  pdf.text(contactName, rightColumnX + 35, rightYPosition);
-  rightYPosition += 5;
+  invoiceDetails.forEach(([label, value]) => {
+    pdf.setFont('helvetica', 'normal');
+    pdf.setTextColor(...mediumGray);
+    pdf.text(label, rightColumnX, rightY);
+    pdf.setFont('helvetica', 'bold');
+    pdf.setTextColor(...darkGray);
+    pdf.text(value, rightColumnX + 40, rightY);
+    rightY += 6;
+  });
   
-  // Kundennummer (şimdilik sabit)
-  pdf.text('Kundennummer:', rightColumnX, rightYPosition);
-  pdf.text('000034', rightColumnX + 35, rightYPosition);
-  rightYPosition += 5;
+  yPosition = Math.max(leftY, rightY) + 20;
   
-  // Set y position after header sections
-  yPosition = Math.max(leftYPosition, rightYPosition) + 20;
+  // === CUSTOMER ADDRESS SECTION ===
   
-  // Müşteri adresi - mektup gönderme için gerekli
-  yPosition += 15;
-  
-  // Fetch customer details including address
+  // Fetch and display customer details
   let customerAddress = '';
+  let customerData: any = null;
+  
   try {
     if (invoice.customerName) {
       const { data: { user } } = await supabase.auth.getUser();
@@ -181,16 +228,16 @@ export async function generateInvoicePDF(invoice: Invoice): Promise<void> {
           .single();
 
         if (profile?.vendor_id) {
-          // Find customer by name in the vendor's customers to get address
           const { data: customer } = await supabase
             .from('customers')
-            .select('name, address')
+            .select('*')
             .eq('vendor_id', profile.vendor_id)
             .eq('name', invoice.customerName)
             .single();
 
-          if (customer?.address) {
-            customerAddress = customer.address;
+          if (customer) {
+            customerData = customer;
+            customerAddress = customer.address || '';
           }
         }
       }
@@ -199,261 +246,224 @@ export async function generateInvoicePDF(invoice: Invoice): Promise<void> {
     console.log('Could not fetch customer address:', error);
   }
   
-  // Display customer name and address
+  // Customer address box
   if (invoice.customerName) {
-    pdf.setFontSize(10);
-    pdf.setTextColor(0, 0, 0);
-    pdf.text(invoice.customerName, margin, yPosition);
-    yPosition += 6;
+    pdf.setFont('helvetica', 'bold');
+    pdf.setFontSize(11);
+    pdf.setTextColor(...darkGray);
+    pdf.text('Rechnungsadresse', margin, yPosition);
+    yPosition += 8;
     
-    // Display customer address if available
+    // Address box with border
+    const addressBoxHeight = 25;
+    pdf.setDrawColor(...brandColor);
+    pdf.setLineWidth(0.5);
+    pdf.rect(margin, yPosition, leftColumnWidth, addressBoxHeight);
+    
+    pdf.setFont('helvetica', 'bold');
+    pdf.setFontSize(11);
+    pdf.setTextColor(...darkGray);
+    pdf.text(invoice.customerName, margin + 3, yPosition + 6);
+    
     if (customerAddress) {
-      pdf.setFontSize(9);
-      pdf.setTextColor(0, 0, 0);
+      pdf.setFont('helvetica', 'normal');
+      pdf.setFontSize(10);
+      pdf.setTextColor(...mediumGray);
       const addressLines = customerAddress.split('\n');
+      let addressY = yPosition + 12;
       addressLines.forEach((line) => {
         if (line.trim()) {
-          pdf.text(line.trim(), margin, yPosition);
-          yPosition += 4;
+          pdf.text(line.trim(), margin + 3, addressY);
+          addressY += 4;
         }
       });
     }
     
-    yPosition += 10;
+    yPosition += addressBoxHeight + 20;
   }
   
-  // Greeting text
-  pdf.setFontSize(10);
-  pdf.setTextColor(0, 0, 0);
+  // === PERSONALIZED GREETING ===
   
-  // Generate personalized greeting based on customer data
-  let topGreeting = 'Sehr geehrte Damen und Herren';
+  let greeting = 'Sehr geehrte Damen und Herren';
   
-  // Try to get customer data for personalized greeting using customer_id from invoice
-  try {
-    if (invoice.customerName) {
-      // Get customer details from Supabase if we have customer_id
-      const { data: { user } } = await supabase.auth.getUser();
-      if (user) {
-        const { data: profile } = await supabase
-          .from('user_profiles')
-          .select('vendor_id')
-          .eq('user_id', user.id)
-          .single();
-
-        if (profile?.vendor_id) {
-          // Find customer by name in the vendor's customers
-          const { data: customer } = await supabase
-            .from('customers')
-            .select('contact_person, contact_gender')
-            .eq('vendor_id', profile.vendor_id)
-            .eq('name', invoice.customerName)
-            .single();
-
-          if (customer?.contact_person && customer.contact_person.trim()) {
-            // Use contact person for greeting
-            const contactPerson = customer.contact_person.trim();
-            
-            if (customer.contact_gender === 'male') {
-              topGreeting = `Sehr geehrter Herr ${contactPerson}`;
-            } else if (customer.contact_gender === 'female') {
-              topGreeting = `Sehr geehrte Frau ${contactPerson}`;
-            } else {
-              // Gender neutral or not specified
-              topGreeting = `Sehr geehrte/r ${contactPerson}`;
-            }
-          }
-          // If no contact_person, keep default "Sehr geehrte Damen und Herren"
-        }
-      }
+  if (customerData?.contact_person && customerData.contact_person.trim()) {
+    const contactPerson = customerData.contact_person.trim();
+    if (customerData.contact_gender === 'male') {
+      greeting = `Sehr geehrter Herr ${contactPerson}`;
+    } else if (customerData.contact_gender === 'female') {
+      greeting = `Sehr geehrte Frau ${contactPerson}`;
+    } else {
+      greeting = `Sehr geehrte/r ${contactPerson}`;
     }
-  } catch (error) {
-    console.log('Using default greeting due to:', error);
-    // Keep default greeting on any error
   }
   
-  pdf.text(topGreeting, margin, yPosition);
+  pdf.setFont('helvetica', 'normal');
+  pdf.setFontSize(11);
+  pdf.setTextColor(...darkGray);
+  pdf.text(greeting, margin, yPosition);
   yPosition += 8;
   
-  pdf.text('Für die Erledigung der von Ihnen beauftragten Tätigkeiten berechnen wir Ihnen wie folgt:', margin, yPosition);
+  pdf.text('Für die erbrachten Leistungen stellen wir Ihnen folgende Positionen in Rechnung:', margin, yPosition);
   yPosition += 15;
   
-  // Clean minimal table with proper column spacing
-  const tableX = margin;
-  const tableWidth = contentWidth;
-  const tableHeaderHeight = 8;
+  // === MODERN ITEMS TABLE ===
   
-  // Define column widths to prevent overlap
-  const col1Width = 15;  // AUFTRAG column
-  const col2Width = 85;  // BEZEICHNUNG column (wider for descriptions)
-  const col3Width = 25;  // ANZAHL column
-  const col4Width = 25;  // EP column
-  const col5Width = 30;  // BETRAG column
+  // Table header with background
+  const tableStartY = yPosition;
+  const headerHeight = 10;
+  const rowHeight = 8;
   
-  // Simple table header with bottom line
-  pdf.setDrawColor(150, 150, 150);
-  pdf.setLineWidth(0.3);
-  pdf.line(tableX, yPosition + tableHeaderHeight, tableX + tableWidth, yPosition + tableHeaderHeight);
-  
-  // Header text with proper spacing
-  pdf.setFontSize(9);
-  pdf.setTextColor(80, 80, 80);
-  pdf.text('AUFTRAG', tableX + 2, yPosition + 6);
-  pdf.text('BEZEICHNUNG', tableX + col1Width + 5, yPosition + 6);  // Added more spacing
-  pdf.text('ANZAHL', tableX + col1Width + col2Width + 5, yPosition + 6);
-  pdf.text('EP', tableX + col1Width + col2Width + col3Width + 5, yPosition + 6);
-  pdf.text('BETRAG', tableX + col1Width + col2Width + col3Width + col4Width + 5, yPosition + 6);
-  
-  yPosition += tableHeaderHeight;
-  let tableContentStartY = yPosition;
-  
-  // Items with proper column boundaries
-  invoice.items.forEach((item, index) => {
-    if (yPosition > pageHeight - 120) {
-      pdf.addPage();
-      yPosition = margin + 20;
-      tableContentStartY = yPosition;
-    }
-    
-    // Calculate required height for this row based on description length
-    const maxDescWidth = col2Width - 4; // Leave some padding
-    const descriptionLines = pdf.splitTextToSize(item.description, maxDescWidth);
-    const itemHeight = Math.max(8, descriptionLines.length * 4 + 2);
-    
-    // Alternating row background
-    if (index % 2 === 1) {
-      pdf.setFillColor(252, 252, 252);
-      pdf.rect(tableX, yPosition, tableWidth, itemHeight, 'F');
-    }
-    
-    pdf.setFontSize(9);
-    pdf.setTextColor(0, 0, 0);
-    
-    // Position number (AUFTRAG)
-    pdf.text((index + 1).toString(), tableX + 2, yPosition + 6);
-    
-    // Description (BEZEICHNUNG) - multi-line with proper boundaries
-    pdf.text(descriptionLines, tableX + col1Width + 2, yPosition + 6);
-    
-    // Quantity with unit (ANZAHL) - properly positioned
-    const quantityText = `${item.quantity} Std.`;
-    pdf.text(quantityText, tableX + col1Width + col2Width + 2, yPosition + 6);
-    
-    // Unit price (EP) - properly positioned
-    pdf.text(`CHF ${item.unitPrice.toFixed(2)}`, tableX + col1Width + col2Width + col3Width + 2, yPosition + 6);
-    
-    // Total (BETRAG) - properly positioned
-    const formattedTotal = `CHF ${item.total.toLocaleString('de-CH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-    pdf.text(formattedTotal, tableX + col1Width + col2Width + col3Width + col4Width + 2, yPosition + 6);
-    
-    yPosition += itemHeight;
-    
-    // Add border line between items
-    if (index < invoice.items.length - 1) {
-      pdf.setDrawColor(235, 235, 235);
-      pdf.setLineWidth(0.2);
-      pdf.line(tableX, yPosition, tableX + tableWidth, yPosition);
-    }
+  // Calculate table width to ensure it fits within page margins
+  const tableWidth = Math.min(contentWidth, 170); // Limit table width to prevent overflow
+  console.log('🔍 Table dimensions:', {
+    contentWidth,
+    tableWidth,
+    pageWidth,
+    margin
   });
   
-  // Clean totals section - right aligned without background
-  yPosition += 15;
+  // Header background
+  pdf.setFillColor(...brandColor);
+  pdf.rect(margin, yPosition, tableWidth, headerHeight, 'F');
   
-  const totalsX = tableX + tableWidth - 70;
-  let totalsY = yPosition;
-  
-  // Subtotal line
-  pdf.setDrawColor(150, 150, 150);
-  pdf.setLineWidth(0.3);
-  pdf.line(totalsX, totalsY - 3, tableX + tableWidth, totalsY - 3);
-  
-  // Subtotal (Zwischensumme ex kl. MwSt.)
-  pdf.setFontSize(9);
-  pdf.setTextColor(80, 80, 80);
-  pdf.text('Zwischensumme ex kl. MwSt.', totalsX, totalsY);
-  pdf.setTextColor(0, 0, 0);
-  const formattedSubtotal = `${invoice.subtotal.toLocaleString('de-CH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-  pdf.text(formattedSubtotal, tableX + tableWidth - 4, totalsY, { align: 'right' });
-  totalsY += 5;
-  
-  // Tax - Calculate unique tax rates and amounts
-  const taxGroups = invoice.items.reduce((groups, item) => {
-    const rate = item.taxRate;
-    if (!groups[rate]) {
-      groups[rate] = { rate, taxAmount: 0 };
-    }
-    groups[rate].taxAmount += (item.total * rate) / 100;
-    return groups;
-  }, {} as Record<number, { rate: number; taxAmount: number }>);
-  
-  // Display each tax rate separately
-  Object.values(taxGroups).forEach((taxGroup) => {
-    pdf.setTextColor(80, 80, 80);
-    pdf.text(`MwSt. ${taxGroup.rate.toFixed(1)} %`, totalsX, totalsY);
-    pdf.setTextColor(0, 0, 0);
-    const formattedTax = `${taxGroup.taxAmount.toLocaleString('de-CH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-    pdf.text(formattedTax, tableX + tableWidth - 4, totalsY, { align: 'right' });
-    totalsY += 5;
-  });
-  
-  // Total line
-  pdf.setDrawColor(0, 0, 0);
-  pdf.setLineWidth(0.5);
-  pdf.line(totalsX, totalsY, tableX + tableWidth, totalsY);
-  totalsY += 5;
-  
-  // Total amount (Rechnungstotal inkl. MwSt. in CHF)
+  // Header text
+  pdf.setFont('helvetica', 'bold');
   pdf.setFontSize(10);
-  pdf.setTextColor(0, 0, 0);
-  pdf.text('Rechnungstotal inkl. MwSt. in CHF', totalsX, totalsY);
-  const formattedTotal = `${invoice.total.toLocaleString('de-CH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-  pdf.text(formattedTotal, tableX + tableWidth - 4, totalsY, { align: 'right' });
+  pdf.setTextColor(255, 255, 255);
   
-  yPosition = totalsY + 15;
+  const columns = [
+    { text: 'Pos.', x: margin + 3, width: 15 },
+    { text: 'Beschreibung', x: margin + 20, width: 90 },
+    { text: 'Menge', x: margin + 115, width: 20 },
+    { text: 'Einzelpreis', x: margin + 140, width: 25 },
+    { text: 'Betrag', x: margin + 170, width: 25 }
+  ];
   
-  // Payment terms and closing - cleaner format
+  columns.forEach(col => {
+    pdf.text(col.text, col.x, yPosition + 7);
+  });
+  
+  yPosition += headerHeight;
+  
+  // Table rows
+  invoice.items.forEach((item, index) => {
+    // Alternating row colors
+    if (index % 2 === 0) {
+      pdf.setFillColor(...lightGray);
+      pdf.rect(margin, yPosition, tableWidth, rowHeight, 'F');
+    }
+    
+    pdf.setFont('helvetica', 'normal');
+    pdf.setFontSize(9);
+    pdf.setTextColor(...darkGray);
+    
+    // Position number
+    pdf.text((index + 1).toString(), margin + 3, yPosition + 6);
+    
+    // Description (with text wrapping if needed)
+    const maxDescWidth = 85;
+    const descLines = pdf.splitTextToSize(item.description, maxDescWidth);
+    pdf.text(descLines[0], margin + 20, yPosition + 6);
+    
+    // Quantity
+    pdf.text(item.quantity.toString(), margin + 115, yPosition + 6);
+    
+    // Unit price
+    pdf.text(`CHF ${item.unitPrice.toFixed(2)}`, margin + 140, yPosition + 6);
+    
+    // Total
+    pdf.setFont('helvetica', 'bold');
+    pdf.text(`CHF ${item.total.toFixed(2)}`, margin + 170, yPosition + 6);
+    
+    yPosition += rowHeight;
+  });
+  
+  // Table border
+  pdf.setDrawColor(...mediumGray);
+  pdf.setLineWidth(0.3);
+  pdf.rect(margin, tableStartY, tableWidth, yPosition - tableStartY);
+  
   yPosition += 10;
   
-  pdf.setFontSize(9);
-  pdf.setTextColor(0, 0, 0);
+  // === TOTALS SECTION ===
   
-  // Calculate due days for payment terms
-  const invoiceDate = new Date(invoice.date);
-  const dueDate = new Date(invoice.dueDate);
-  const diffTime = Math.abs(dueDate.getTime() - invoiceDate.getTime());
-  const dueDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+  const totalsX = pageWidth - margin - 80;
   
-  // Zahlungskonditionen section
-  pdf.text(`Zahlungskonditionen: ${dueDays} Tage netto`, margin, yPosition);
+  // Subtotal
+  pdf.setFont('helvetica', 'normal');
+  pdf.setFontSize(10);
+  pdf.setTextColor(...mediumGray);
+  pdf.text('Zwischensumme:', totalsX, yPosition);
+  pdf.setTextColor(...darkGray);
+  pdf.text(`CHF ${invoice.subtotal.toFixed(2)}`, pageWidth - margin, yPosition, { align: 'right' });
+  yPosition += 6;
+  
+  // Tax
+  if (invoice.taxTotal > 0) {
+    pdf.setTextColor(...mediumGray);
+    pdf.text('MwSt.:', totalsX, yPosition);
+    pdf.setTextColor(...darkGray);
+    pdf.text(`CHF ${invoice.taxTotal.toFixed(2)}`, pageWidth - margin, yPosition, { align: 'right' });
+    yPosition += 6;
+  }
+  
+  // Total with emphasis
+  pdf.setDrawColor(...brandColor);
+  pdf.setLineWidth(1);
+  pdf.line(totalsX, yPosition, pageWidth - margin, yPosition);
   yPosition += 5;
-  pdf.text('Besten Dank für Ihren Auftrag.', margin, yPosition);
-  yPosition += 15;
   
-  pdf.text('Mit freundlichen Grüssen', margin, yPosition);
+  pdf.setFont('helvetica', 'bold');
+  pdf.setFontSize(12);
+  pdf.setTextColor(...brandColor);
+  pdf.text('Gesamtbetrag:', totalsX, yPosition);
+  pdf.text(`CHF ${invoice.total.toFixed(2)}`, pageWidth - margin, yPosition, { align: 'right' });
+  
+  yPosition += 20;
+  
+  // === CLOSING SECTION ===
+  
+  pdf.setFont('helvetica', 'normal');
+  pdf.setFontSize(10);
+  pdf.setTextColor(...darkGray);
+  
+  const dueDays = Math.ceil((new Date(invoice.dueDate).getTime() - new Date(invoice.date).getTime()) / (1000 * 60 * 60 * 24));
+  pdf.text(`Zahlbar innerhalb ${dueDays} Tagen ohne Abzug.`, margin, yPosition);
+  yPosition += 6;
+  pdf.text('Vielen Dank für Ihr Vertrauen und Ihren Auftrag.', margin, yPosition);
+  yPosition += 12;
+  
+  pdf.text('Freundliche Grüsse', margin, yPosition);
   yPosition += 8;
   
-  // Use contact person if available, otherwise fall back to company name
+  pdf.setFont('helvetica', 'bold');
   if (settings.contactPerson && settings.contactPerson.trim()) {
     pdf.text(settings.contactPerson, margin, yPosition);
-    yPosition += 4;
     if (settings.contactPosition && settings.contactPosition.trim()) {
+      yPosition += 4;
+      pdf.setFont('helvetica', 'normal');
+      pdf.setTextColor(...mediumGray);
       pdf.text(settings.contactPosition, margin, yPosition);
     }
   } else {
     pdf.text(settings.name || 'Ihr Unternehmen', margin, yPosition);
   }
   
-  // Notes
+  yPosition += 15;
+  
+  // Notes section
   if (invoice.notes) {
-    yPosition += 12;
-    pdf.setFontSize(9);
-    pdf.setTextColor(0, 0, 0);
+    pdf.setFont('helvetica', 'bold');
+    pdf.setFontSize(10);
+    pdf.setTextColor(...darkGray);
     pdf.text('Bemerkungen:', margin, yPosition);
-    yPosition += 5;
+    yPosition += 6;
     
+    pdf.setFont('helvetica', 'normal');
+    pdf.setTextColor(...mediumGray);
     const noteLines = pdf.splitTextToSize(invoice.notes, contentWidth);
-    pdf.setTextColor(80, 80, 80);
     pdf.text(noteLines, margin, yPosition);
+    yPosition += noteLines.length * 4 + 10;
   }
   
   // === MODERN SWISS QR PAYMENT SECTION ===
@@ -531,17 +541,36 @@ export async function generateInvoicePDF(invoice: Invoice): Promise<void> {
     receiptY += 4;
     
     // Split long text to fit in receipt area
+    console.log('🔍 PDF Generator - Company settings:', {
+      name: settings.name,
+      address: settings.address,
+      hasAddress: !!settings.address
+    });
+    
     const companyNameLines = pdf.splitTextToSize(settings.name || 'Ihr Unternehmen', maxReceiptWidth);
     pdf.text(companyNameLines, receiptX, receiptY);
     receiptY += companyNameLines.length * 4;
     
     if (settings.address) {
+      console.log('🔍 Processing company address for Empfangsschein:', settings.address);
       const addressLines = settings.address.split('\n').slice(0, 2);
+      console.log('🔍 Address lines:', addressLines);
       addressLines.forEach((line) => {
-        const splitLines = pdf.splitTextToSize(line, maxReceiptWidth);
-        pdf.text(splitLines, receiptX, receiptY);
-        receiptY += splitLines.length * 4;
+        if (line && line.trim()) {
+          const splitLines = pdf.splitTextToSize(line.trim(), maxReceiptWidth);
+          pdf.text(splitLines, receiptX, receiptY);
+          receiptY += splitLines.length * 4;
+        }
       });
+    } else {
+      console.warn('🟡 No company address found in settings!');
+      // Fallback: Add placeholder text to indicate missing address
+      pdf.setFontSize(7);
+      pdf.setTextColor(100, 100, 100);
+      pdf.text('Adresse nicht konfiguriert', receiptX, receiptY);
+      pdf.setFontSize(8);
+      pdf.setTextColor(0, 0, 0);
+      receiptY += 4;
     }
     receiptY += 6;
     
@@ -552,9 +581,37 @@ export async function generateInvoicePDF(invoice: Invoice): Promise<void> {
       receiptY += 5;
       pdf.setFontSize(8);
       
+      console.log('🔍 Empfangsschein - Customer data:', {
+        name: invoice.customerName,
+        address: customerAddress,
+        hasAddress: !!customerAddress
+      });
+      
       const customerNameLines = pdf.splitTextToSize(invoice.customerName, maxReceiptWidth);
       pdf.text(customerNameLines, receiptX, receiptY);
-      receiptY += customerNameLines.length * 4 + 6;
+      receiptY += customerNameLines.length * 4;
+      
+      // Add customer address if available
+      if (customerAddress && customerAddress.trim()) {
+        const addressLines = customerAddress.split('\n');
+        addressLines.forEach((line) => {
+          if (line && line.trim()) {
+            const splitLines = pdf.splitTextToSize(line.trim(), maxReceiptWidth);
+            pdf.text(splitLines, receiptX, receiptY);
+            receiptY += splitLines.length * 4;
+          }
+        });
+      } else {
+        // Show placeholder if no address available
+        pdf.setFontSize(7);
+        pdf.setTextColor(100, 100, 100);
+        pdf.text('Adresse nicht verfügbar', receiptX, receiptY);
+        pdf.setFontSize(8);
+        pdf.setTextColor(0, 0, 0);
+        receiptY += 4;
+      }
+      
+      receiptY += 6;
     }
     
     // Währung / Betrag
@@ -623,12 +680,24 @@ export async function generateInvoicePDF(invoice: Invoice): Promise<void> {
     detailsY += detailsCompanyLines.length * 4;
     
     if (settings.address) {
+      console.log('🔍 Processing company address for Zahlteil:', settings.address);
       const addressLines = settings.address.split('\n').slice(0, 2);
       addressLines.forEach((line) => {
-        const splitLines = pdf.splitTextToSize(line, maxDetailsWidth);
-        pdf.text(splitLines, detailsX, detailsY);
-        detailsY += splitLines.length * 4;
+        if (line && line.trim()) {
+          const splitLines = pdf.splitTextToSize(line.trim(), maxDetailsWidth);
+          pdf.text(splitLines, detailsX, detailsY);
+          detailsY += splitLines.length * 4;
+        }
       });
+    } else {
+      console.warn('🟡 No company address found for Zahlteil!');
+      // Fallback: Add placeholder text to indicate missing address
+      pdf.setFontSize(7);
+      pdf.setTextColor(100, 100, 100);
+      pdf.text('Adresse nicht konfiguriert', detailsX, detailsY);
+      pdf.setFontSize(8);
+      pdf.setTextColor(0, 0, 0);
+      detailsY += 4;
     }
     detailsY += 4;
     
@@ -639,9 +708,35 @@ export async function generateInvoicePDF(invoice: Invoice): Promise<void> {
       detailsY += 5;
       pdf.setFontSize(8);
       
+      console.log('🔍 Zahlteil - Customer data:', {
+        name: invoice.customerName,
+        address: customerAddress,
+        hasAddress: !!customerAddress
+      });
+      
       const detailsCustomerLines = pdf.splitTextToSize(invoice.customerName, maxDetailsWidth);
       pdf.text(detailsCustomerLines, detailsX, detailsY);
       detailsY += detailsCustomerLines.length * 4;
+      
+      // Add customer address if available
+      if (customerAddress && customerAddress.trim()) {
+        const addressLines = customerAddress.split('\n');
+        addressLines.forEach((line) => {
+          if (line && line.trim()) {
+            const splitLines = pdf.splitTextToSize(line.trim(), maxDetailsWidth);
+            pdf.text(splitLines, detailsX, detailsY);
+            detailsY += splitLines.length * 4;
+          }
+        });
+      } else {
+        // Show placeholder if no address available
+        pdf.setFontSize(7);
+        pdf.setTextColor(100, 100, 100);
+        pdf.text('Adresse nicht verfügbar', detailsX, detailsY);
+        pdf.setFontSize(8);
+        pdf.setTextColor(0, 0, 0);
+        detailsY += 4;
+      }
     }
     
     // Additional information (below QR code)
